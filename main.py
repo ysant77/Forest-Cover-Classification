@@ -8,6 +8,7 @@ import tensorflow as tf
 import tifffile
 from utils import combined_loss
 from keras.models import load_model
+from s2cloudless import S2PixelCloudDetector
 import os
 
 COLOR_MAP = {
@@ -22,6 +23,7 @@ COLOR_MAP = {
 }
 
 model = load_model("./models/model_combined_loss.h5", custom_objects={'combined_loss': combined_loss})
+cloud_detector = S2PixelCloudDetector(threshold=0.99, average_over=4, dilation_size=2, all_bands=True)
 
 app = FastAPI()
 
@@ -51,7 +53,7 @@ def create_mask_rgb(label_img):
         label_rgb_mask[int(label)] = numpy_to_base64_rgb(rgb_array)
     return label_rgb_mask
 
-def preprocess_image(contents: bytes, desired_shape: tuple) -> np.ndarray:
+def validate_and_read_image(contents: bytes, desired_shape: tuple) -> np.ndarray:
     #with open("temp_check.tif", "wb") as f:
     #    f.write(contents)
    
@@ -65,12 +67,16 @@ def preprocess_image(contents: bytes, desired_shape: tuple) -> np.ndarray:
         raise HTTPException(status_code=400, detail="Incorrect number of bands in the image.")
     if img_shape[0] != desired_shape[0] or img_shape[1] != desired_shape[1]:
         raise HTTPException(status_code=400, detail="Incorrect image size.")
+    img = tf.clip_by_value(tf.cast(img, tf.float32) / MAX_VAL, 0., 1.)
+    img = img.numpy()
 
+    return img
+def preprocess_image(img):
     ndvi = compute_ndvi(img)
     ndvi = tf.expand_dims(ndvi, axis=-1)
     ndvi = (ndvi + 1.0) / 2.0
     ndvi = tf.clip_by_value(tf.cast(ndvi, tf.float32), 0., 1.)
-    img = tf.clip_by_value(tf.cast(img, tf.float32) / MAX_VAL, 0., 1.)
+    
     
     combined_img = tf.concat([img, ndvi], axis=-1)
     #os.remove("temp_check.tif")
@@ -89,10 +95,16 @@ async def upload_files(file1: UploadFile = File(...), file2: UploadFile = File(.
     contents1 = await file1.read()
     contents2 = await file2.read()
 
-    preprocessed_image1 = preprocess_image(contents1, (256, 256, 13))
-    preprocessed_image2 = preprocess_image(contents2, (256, 256, 13))
-
+    img1 = validate_and_read_image(contents1, (256, 256, 13))
+    img2 = validate_and_read_image(contents2, (256, 256, 13))
+    cloud_mask_1 = cloud_detector.get_cloud_masks(img1[np.newaxis, ...])
+    cloud_mask_2 = cloud_detector.get_cloud_masks(img2[np.newaxis, ...])
+    preprocessed_image1 = preprocess_image(img1)
+    preprocessed_image2 = preprocess_image(img2)
     label1, label2 = generate_prediction(preprocessed_image1, preprocessed_image2)
+
+    label1 = label1 * np.logical_not(cloud_mask_1[0])
+    label2 = label2 * np.logical_not(cloud_mask_2[0])
     
 
     label_mask_dict = {}
