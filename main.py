@@ -7,7 +7,9 @@ from io import BytesIO
 import tensorflow as tf
 import tifffile
 from utils import combined_loss
+from scipy.ndimage import zoom
 from keras.models import load_model
+import matplotlib.pyplot as plt
 from s2cloudless import S2PixelCloudDetector
 import os
 
@@ -63,10 +65,10 @@ def validate_and_read_image(contents: bytes, desired_shape: tuple) -> np.ndarray
         img = tif.asarray()
     img_shape = img.shape
 
-    if img_shape[2] != desired_shape[2]:
-        raise HTTPException(status_code=400, detail="Incorrect number of bands in the image.")
-    if img_shape[0] != desired_shape[0] or img_shape[1] != desired_shape[1]:
-        raise HTTPException(status_code=400, detail="Incorrect image size.")
+    #if img_shape[2] != desired_shape[2]:
+    #    raise HTTPException(status_code=400, detail="Incorrect number of bands in the image.")
+    #if img_shape[0] != desired_shape[0] or img_shape[1] != desired_shape[1]:
+    #    raise HTTPException(status_code=400, detail="Incorrect image size.")
     img = tf.clip_by_value(tf.cast(img, tf.float32) / MAX_VAL, 0., 1.)
     img = img.numpy()
 
@@ -90,22 +92,66 @@ def generate_prediction(image1: np.ndarray, image2: np.ndarray):
 
     return predicted_labels
 
+def save_array_with_colorbar(array, output_file):
+    fig, ax = plt.subplots()
+    cax = ax.imshow(array)  # Choose your preferred colormap
+    fig.colorbar(cax)
+    plt.savefig(output_file)
+    plt.close(fig)
+
+def resample_np_array(data, target_shape):
+    """
+    Resample a numpy array to the target shape.
+
+    Args:
+    - data (np.array): Input data array.
+    - target_shape (tuple): Target shape.
+
+    Returns:
+    - np.array: Resampled data.
+    """
+
+    # Calculate the zoom factors for each dimension
+    zoom_factors = [
+        target_dim / input_dim
+        for target_dim, input_dim in zip(target_shape, data.shape)
+    ]
+
+    # Exclude the channels dimension from zoom factors (keep channel count same)
+    zoom_factors[-1] = 1
+
+    return zoom(data, zoom_factors, order=1)
+
+
 @app.post("/upload/", response_class=JSONResponse, tags=["image-processing"])
 async def upload_files(file1: UploadFile = File(...), file2: UploadFile = File(...)):
     contents1 = await file1.read()
     contents2 = await file2.read()
 
-    img1 = validate_and_read_image(contents1, (256, 256, 13))
-    img2 = validate_and_read_image(contents2, (256, 256, 13))
-    cloud_mask_1 = cloud_detector.get_cloud_masks(img1[np.newaxis, ...])
-    cloud_mask_2 = cloud_detector.get_cloud_masks(img2[np.newaxis, ...])
+    reqd_shape = (256,256,13)
+
+    img1 = resample_np_array(validate_and_read_image(contents1, reqd_shape), reqd_shape)
+    img2 = resample_np_array(validate_and_read_image(contents2, reqd_shape), reqd_shape)
+
+    #img1 = validate_and_read_image(contents1, (256, 256, 13))
+    #img2 = validate_and_read_image(contents2, (256, 256, 13))
+
     preprocessed_image1 = preprocess_image(img1)
     preprocessed_image2 = preprocess_image(img2)
+
+    cloud_mask_1 = cloud_detector.get_cloud_masks(img1[np.newaxis, ...])
+    cloud_mask_2 = cloud_detector.get_cloud_masks(img2[np.newaxis, ...])
+    
     label1, label2 = generate_prediction(preprocessed_image1, preprocessed_image2)
+
+    save_array_with_colorbar(label1, "label1_before.png")   
+    save_array_with_colorbar(label2, "label2_before.png")
 
     label1 = label1 * np.logical_not(cloud_mask_1[0])
     label2 = label2 * np.logical_not(cloud_mask_2[0])
-    
+
+    save_array_with_colorbar(label1, "label1.png")   
+    save_array_with_colorbar(label2, "label2.png")
 
     label_mask_dict = {}
     label_mask_dict[0] = create_mask_rgb(label1)
