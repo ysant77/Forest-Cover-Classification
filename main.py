@@ -6,7 +6,7 @@ import base64
 from io import BytesIO
 import tensorflow as tf
 import tifffile
-from utils import combined_loss
+from utils import custom_loss
 from scipy.ndimage import zoom
 from keras.models import load_model
 import matplotlib.pyplot as plt
@@ -23,7 +23,7 @@ COLOR_MAP = {
     6: [28, 13, 255] # blue
 }
 
-model = load_model("./models/model_combined_loss.h5", custom_objects={'combined_loss': combined_loss})
+model = load_model("./models/model_custom_loss_bs_8_ep_100.h5", custom_objects={'loss': custom_loss})
 cloud_detector = S2PixelCloudDetector(threshold=0.99, average_over=4, dilation_size=2, all_bands=True)
 
 app = FastAPI()
@@ -55,19 +55,15 @@ def create_mask_rgb(label_img):
     return label_rgb_mask
 
 def validate_and_read_image(contents: bytes, desired_shape: tuple) -> np.ndarray:
-    #with open("temp_check.tif", "wb") as f:
-    #    f.write(contents)
    
-    #with tifffile.TiffFile("temp_check.tif") as tif:
-    #    img = tif.asarray()
     with tifffile.TiffFile(BytesIO(contents)) as tif:
         img = tif.asarray()
     img_shape = img.shape
 
-    #if img_shape[2] != desired_shape[2]:
-    #    raise HTTPException(status_code=400, detail="Incorrect number of bands in the image.")
-    #if img_shape[0] != desired_shape[0] or img_shape[1] != desired_shape[1]:
-    #    raise HTTPException(status_code=400, detail="Incorrect image size.")
+    if img_shape[2] != desired_shape[2]:
+       raise HTTPException(status_code=400, detail="Incorrect number of bands in the image.")
+    if img_shape[0] != desired_shape[0] or img_shape[1] != desired_shape[1]:
+       raise HTTPException(status_code=400, detail="Incorrect image size.")
     img = tf.clip_by_value(tf.cast(img, tf.float32) / MAX_VAL, 0., 1.)
     img = img.numpy()
 
@@ -123,11 +119,11 @@ async def upload_files(file1: UploadFile = File(...), file2: UploadFile = File(.
 
     reqd_shape = (256,256,13)
 
-    img1 = resample_np_array(validate_and_read_image(contents1, reqd_shape), reqd_shape)
-    img2 = resample_np_array(validate_and_read_image(contents2, reqd_shape), reqd_shape)
+    #img1 = resample_np_array(validate_and_read_image(contents1, reqd_shape), reqd_shape)
+    #img2 = resample_np_array(validate_and_read_image(contents2, reqd_shape), reqd_shape)
 
-    #img1 = validate_and_read_image(contents1, (256, 256, 13))
-    #img2 = validate_and_read_image(contents2, (256, 256, 13))
+    img1 = validate_and_read_image(contents1, (256, 256, 13))
+    img2 = validate_and_read_image(contents2, (256, 256, 13))
 
     preprocessed_image1 = preprocess_image(img1)
     preprocessed_image2 = preprocess_image(img2)
