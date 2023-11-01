@@ -21,7 +21,6 @@ COLOR_MAP = {
     4: [165, 165, 165], # grey
     5: [249, 255, 164], # light yellow
     6: [28, 13, 255] # blue
-    # Add more mappings as needed
 }
 
 model = load_model("./models/model_combined_loss.h5", custom_objects={'combined_loss': combined_loss})
@@ -92,12 +91,6 @@ def generate_prediction(image1: np.ndarray, image2: np.ndarray):
 
     return predicted_labels
 
-def save_array_with_colorbar(array, output_file):
-    fig, ax = plt.subplots()
-    cax = ax.imshow(array)  # Choose your preferred colormap
-    fig.colorbar(cax)
-    plt.savefig(output_file)
-    plt.close(fig)
 
 def resample_np_array(data, target_shape):
     """
@@ -144,14 +137,8 @@ async def upload_files(file1: UploadFile = File(...), file2: UploadFile = File(.
     
     label1, label2 = generate_prediction(preprocessed_image1, preprocessed_image2)
 
-    save_array_with_colorbar(label1, "label1_before.png")   
-    save_array_with_colorbar(label2, "label2_before.png")
-
     label1 = label1 * np.logical_not(cloud_mask_1[0])
     label2 = label2 * np.logical_not(cloud_mask_2[0])
-
-    save_array_with_colorbar(label1, "label1.png")   
-    save_array_with_colorbar(label2, "label2.png")
 
     label_mask_dict = {}
     label_mask_dict[0] = create_mask_rgb(label1)
