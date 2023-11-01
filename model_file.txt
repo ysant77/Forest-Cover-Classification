@@ -1,3 +1,3 @@
-Download the model_combined_loss.h5 from here:
+Download the Unet model from here:
 
-https://drive.google.com/file/d/1dO6u9ZjC2tBueaYNnFVLTvrxOYJ_bVzX/view?usp=sharing
+https://drive.google.com/file/d/16ZjceBn8uc1Q9jsRDwfqrdGkFKK_MeJf/view?usp=sharing
