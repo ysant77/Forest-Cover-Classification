@@ -4,6 +4,7 @@ import tensorflow as tf
 from tensorflow.keras.models import load_model
 
 from analysis import quantify_changes
+from typing import List
 from report import zip_folder, save_overlayed_images
 from s2cloudless import S2PixelCloudDetector
 from utils import custom_loss, normalize, numpy_to_base64_rgb, loading_tiff_and_resize, model_dir_name
@@ -121,7 +122,7 @@ def normalize_and_get_cloud_masks(image: np.ndarray):
     return cloud_masks
 
 
-async def deforestation_detection(images: list[bytes], filenames: list[str]):
+async def deforestation_detection(images: List[bytes], filenames: List[str]):
     """Performs deforestation detection on the given images."""
     # Load TIFF images
     image_1 = loading_tiff_and_resize(images[0], (256, 256, 13))
@@ -154,7 +155,7 @@ async def deforestation_detection(images: list[bytes], filenames: list[str]):
     save_overlayed_images(masked_images_1, filenames[0])
     save_overlayed_images(masked_images_2, filenames[1])
     # Quantify deforestation
-    changes = quantify_changes()
+    changes = quantify_changes(label_1_declouds, label_2_declouds)
     # Zip all files
     zip_folder("analysis")
 

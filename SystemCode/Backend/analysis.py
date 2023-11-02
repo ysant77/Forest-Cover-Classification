@@ -1,6 +1,5 @@
 import numpy as np
 import pandas as pd
-import rasterio
 from matplotlib.colors import ListedColormap
 
 color_map = {
@@ -23,16 +22,11 @@ color_list = [color_map[key] for key in color_map.keys()]
 new_cmap = ListedColormap(color_list)
 
 
-def quantify_changes():
+def quantify_changes(mask_starting, mask_ending):
     """Quantify the changes in the occurrence of each class between two masks"""
     # Get the masks
-    scl_path_starting = "Sample_Images/SCL_Kranji_20200106.tif"
-    scl_path_ending = "Sample_Images/SCL_Kranji_20231007.tif"
-    with rasterio.open(scl_path_starting) as src:
-        mask_starting = src.read(1)
-    with rasterio.open(scl_path_ending) as src:
-        mask_ending = src.read(1)
-    #
+    
+
     changes = {}
     area_changes = {}  # Dictionary to store changes in square kilometers
     percent_changes = {}  # New dictionary to store percentage changes
@@ -62,14 +56,18 @@ def quantify_changes():
             percent_change = 0 if change == 0 else float('inf')  # Set to infinity if count1 is 0 but there's a change
         percent_changes[class_id] = percent_change
 
-    # Create DataFrames
+   
     changes_df = pd.DataFrame(list(changes.items()), columns=['Class', 'change_in_pixels'])
     area_changes_df = pd.DataFrame(list(area_changes.items()), columns=['Class', 'change_in_area'])
     percent_changes_df = pd.DataFrame(list(percent_changes.items()), columns=['Class', 'change_in_percentage'])
+    
 
     # Merge the data on Class
     combined_df = pd.merge(changes_df, area_changes_df, on='Class')
+
+
     combined_df = pd.merge(combined_df, percent_changes_df, on='Class')  # Merging with percent_changes_df
+
     combined_df['Class'] = combined_df['Class'].apply(lambda x: labels[x - 2])  # Replace class ID with class name
     # Dump results
     combined_df.to_csv('files/changes.csv', index=False)

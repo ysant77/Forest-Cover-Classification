@@ -1,4 +1,6 @@
 *.h5
+analysis/
+files/
 .output.txt.swp
 .untitled3.py.swp
 .ipynb_checkpoints

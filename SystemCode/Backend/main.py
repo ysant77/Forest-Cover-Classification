@@ -23,10 +23,13 @@ async def upload_files(
     # Read in raw bytes
     image_1_bytes = await first.read()
     image_2_bytes = await second.read()
+
+
     # Get places and dates
     raw_filenames = [elem[:-4] for elem in file_list.split(',')]
     places = [elem.split("_")[1] for elem in raw_filenames]
     dates = [elem.split("_")[2] for elem in raw_filenames]
+
     # Perform deforestation detection
     results = await deforestation_detection([image_1_bytes, image_2_bytes], filenames=raw_filenames)
     # Return
