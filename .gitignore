@@ -1,4 +1,5 @@
-models/
+*.h5
+pixel_s2_cloud_detector_lightGBM_v0.1.txt
 .output.txt.swp
 .untitled3.py.swp
 .ipynb_checkpoints
