@@ -6,7 +6,7 @@ from keras.src.saving.saving_api import load_model
 from analysis import quantify_changes
 from report import zip_folder, save_overlayed_images
 from s2cloudless import S2PixelCloudDetector
-from utils import custom_loss, normalize, numpy_to_base64_rgb, loading_tiff_and_resize
+from utils import custom_loss, normalize, numpy_to_base64_rgb, loading_tiff_and_resize, model_dir_name
 
 COLOR_MAP = {
     0: [255, 255, 255],  # white
@@ -20,7 +20,7 @@ COLOR_MAP = {
 MAX_VAL = 4096.0
 
 model = load_model(
-    "models/model_custom_loss_bs_8_ep_100.h5",
+    f"{model_dir_name}/model_custom_loss_bs_8_ep_100.h5",
     custom_objects={'loss': custom_loss}
 )
 cloud_detector = S2PixelCloudDetector(

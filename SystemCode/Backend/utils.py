@@ -17,6 +17,8 @@ if not os.path.exists("analysis"):
 
 MAX_VAL = 4096.0
 
+root_dir = os.path.dirname(__file__)
+model_dir_name = os.path.join(root_dir, "models")
 
 EPSILON = 1e-7
 SAMPLE_WEIGHT = [EPSILON, 1.1033, 1.0629, 1.1714, 1.1273, 1.2035, 1.0667]
