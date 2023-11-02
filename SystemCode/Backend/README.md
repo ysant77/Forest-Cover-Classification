@@ -1,4 +1,4 @@
-# 🌲 Deforestation Detection
+# 🌲 Forest Cover Classification
 
 Backend system of PRS Practice Module, Group 21, NUS-ISS, 2023.
 

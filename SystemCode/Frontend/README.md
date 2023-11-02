@@ -1,4 +1,4 @@
-# 🌲 Deforestation Detection
+# 🌲 Forest Cover Classification
 
 NUS-ISS, PRS Practice Module, WebUI & Client
 
