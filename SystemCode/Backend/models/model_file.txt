@@ -1,7 +1,3 @@
 Google drive link for Unet model:
 
 https://drive.google.com/file/d/16ZjceBn8uc1Q9jsRDwfqrdGkFKK_MeJf/view?usp=sharing
-
-Google drive link for "pixel_s2_cloud_detector_lightGBM_v0.1.txt" model:
-
-https://drive.google.com/drive/u/3/folders/1a38Axy4ckoH7-zhvT5GC7wfGsFYVMzh0
