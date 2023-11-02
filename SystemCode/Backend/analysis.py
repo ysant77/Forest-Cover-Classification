@@ -13,9 +13,8 @@ color_map = {
     7: np.array([255, 0, 0], dtype=np.float32) / 255  # unknown; red
 }
 labels = [
-    "Shrubland", "Savanna", "Grassland",
-    "Wetland", "Corpland", "Urban",
-    "Snow and Ice", "Barren"
+    "Cloud", "Forest", "Grassland",
+    "Wetland", "Urban", "Barren", "Water"
 ]
 # Create the colormap
 color_list = [color_map[key] for key in color_map.keys()]
