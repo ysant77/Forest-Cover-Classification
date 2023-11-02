@@ -1,7 +1,7 @@
 import cv2
 import numpy as np
 import tensorflow as tf
-from keras.src.saving.saving_api import load_model
+from tensorflow.keras.models import load_model
 
 from analysis import quantify_changes
 from report import zip_folder, save_overlayed_images
