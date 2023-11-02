@@ -41,7 +41,7 @@ Deforestation_Detection_Backend
 
 1. First, follow the models/model_file.txt to download the pre-trained models. After downloading, keep the model files in models directory
 2. Install the required packages.
-3. Run the server application with the following command. 
+3. Run the server application with the following command from this directory.
 
 ```bash
 uvicorn main:app --reload --host 0.0.0.0
