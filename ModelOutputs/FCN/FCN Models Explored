@@ -1,0 +1,12 @@
+FCN Models Explored
+1. Initial Model: FCN-8 (14 channels, Sparse Categorical Cross Entropy) - 70.57%
+2. Vary Loss Fn: FCN-8 (14 channels, Weighted Categorical Cross Entropy) - 80.06%
+3. Vary Model: FCN-4 (14 channels, Weighted Categorical Cross Entropy) - 78.08%
+4. Vary Model: FCN-16 (14 channels, Weighted Categorical Cross Entropy) - 87.51%
+5. Vary Model: FCN-32 (14 channels, Weighted Categorical Cross Entropy) - 77.01%
+6. Vary Loss Fn: FCN-16 (14 channels, Combined loss) - 78.98%
+7. Vary Input Channels: FCN-16 (12 channels - omit Bands 1 & 10, Weighted Categorical Cross Entropy) - 87.26%
+8. Vary Input Channels: FCN-16 (9 channels - NDVI + Bands 2-7 & 11-12, Weighted Categorical Cross Entropy) - 71.95%
+9. Vary Input Channels: FCN-16 (4 channels - Bands 2-4 & 8, Weighted Categorical Cross Entropy) - 73.41%
+10. Vary Input Channels: FCN-16 (4 channels - Bands 5-7 & 11, Weighted Categorical Cross Entropy) - 75.67%
+11. Fusion aft. Feature Extraction: FCN-16 (4+4 channels - Bands (2-4 & 8) & (5-7 & 11), Weighted Categorical Cross Entropy) - 76.71%
