@@ -6,9 +6,10 @@ from pathlib import Path
 # Third-party Libraries
 import numpy as np
 import tensorflow as tf
-from tensorflow.keras import layers, Sequential, Model, backend as K
+from tensorflow.keras import layers, Sequential, Model, backend as K # Model
 from sklearn.model_selection import train_test_split
 from tensorflow.keras.callbacks import ModelCheckpoint, TensorBoard, EarlyStopping, Callback
+from keras.layers.convolutional import Cropping2D
 
 import tifffile
 from sklearn.metrics import classification_report, confusion_matrix
@@ -37,7 +38,7 @@ weights = np.array(SAMPLE_WEIGHT)
 
 # Training Config
 BATCH_SIZE = 4
-EPOCHS = 20
+EPOCHS = 10
 LEARNING_RATE = 1e-4
 AUTOTUNE = tf.data.AUTOTUNE
 
@@ -86,10 +87,11 @@ def train_eval_dataset_gen(ds_dir):
 
     train_eval_img_dir = 'ROIs0000_*\s2_*'
     train_eval_label_dir = train_eval_img_dir.replace('s2','dfc')
-    train_eval_img_dir = [i.as_posix() for i in ds_dir.rglob(f'{train_eval_img_dir}\*.tif')]
-    train_eval_label_dir = [i.as_posix() for i in ds_dir.rglob(f'{train_eval_label_dir}\*.tif')]
+    train_eval_img_dir = [i.as_posix() for i in Path(ds_dir).rglob(f'{train_eval_img_dir}\*.tif')]
+    train_eval_label_dir = [i.as_posix() for i in Path(ds_dir).rglob(f'{train_eval_label_dir}\*.tif')]
 
     X_train, X_test, y_train, y_test = train_test_split(train_eval_img_dir,train_eval_label_dir,test_size=0.2, random_state=42)
+    X_train, X_test, y_train, y_test = X_train[:12], X_test[:12], y_train[:12], y_test[:12]
 
     return X_train, X_test, y_train, y_test
 
@@ -219,8 +221,9 @@ def dataloader_gen(X_train, y_train, X_test, y_test, batch_size):
 ############################# TRAINING MONITOR #############################
 
 class PlotPredictions(Callback):
-    def __init__(self, test_ds, num_samples=3, plot_every=5, save_path="."):
+    def __init__(self, model, test_ds, num_samples=3, plot_every=5, save_path="."):
         super().__init__()
+        self.model = model
         self.test_ds = test_ds
         self.num_samples = num_samples
         self.plot_every = plot_every
@@ -244,7 +247,7 @@ class PlotPredictions(Callback):
                 img_sample = tf.reshape(img, [1, 256, 256, CHANNEL])
                 actual_label_sample = actual_label
 
-                predicted_label = np.argmax(model.predict(img_sample), axis=-1)
+                predicted_label = np.argmax(self.model.predict(img_sample), axis=-1)
                 predicted_label = predicted_label.reshape((predicted_label.shape[1], predicted_label.shape[2]))
 
                 # Plot actual label
@@ -269,6 +272,7 @@ class PlotPredictions(Callback):
 class ClassificationReportCallback(Callback):
     def __init__(self, model, dataset, steps, filepath="classification_report.json", matrix_path="confusion_matrix.png"):
         super(ClassificationReportCallback, self).__init__()
+        self.model = model
         self.dataset = dataset
         self.steps = steps
         self.filepath = filepath
@@ -299,7 +303,7 @@ class ClassificationReportCallback(Callback):
             # Iterate over the dataset to get predictions and true labels
             for step, (x_batch, y_batch) in enumerate(self.dataset.take(self.steps)):
                 y_true.extend(y_batch.numpy().reshape(-1))
-                y_pred_probs = model.predict(x_batch)
+                y_pred_probs = self.model.predict(x_batch)
                 y_pred = np.argmax(y_pred_probs, axis=-1).reshape(-1)
                 y_pred_list.extend(y_pred)
 
@@ -360,167 +364,157 @@ def plot_history(history, epoch_count, filename):
 
 ############## PSPNET ##############
 
-class PSPNet(Model):
-    def __init__(self, input_shape, num_classes, pretrained_weights=None):
-        super(PSPNet, self).__init__()
 
-        self.input_layer = layers.Input(shape=input_shape, name='start_input')
-        self.num_classes = num_classes
+def conv_block_pspnet(X,filters,block):
+    # resiudal block with dilated convolutions
+    # add skip connection at last after doing convoluion operation to input X
 
-        # Define the model architecture
-        self.build_pspnet()
-        
-        if pretrained_weights:
-            self.load_weights(pretrained_weights)
+    b = 'block_'+str(block)+'_'
+    f1,f2,f3 = filters
+    X_skip = X
+    # block_a
+    X = tf.keras.layers.Conv2D(filters=f1,kernel_size=(1,1),dilation_rate=(1,1),
+                      padding='same',kernel_initializer='he_normal',name=b+'a')(X)
+    X = tf.keras.layers.BatchNormalization(name=b+'batch_norm_a')(X)
+    # X = tf.keras.layers.LeakyReLU(alpha=0.2,name=b+'leakyrelu_a')(X)
+    X = tf.keras.layers.Activation("relu")(X)
+    # block_b
+    X = tf.keras.layers.Conv2D(filters=f2,kernel_size=(3,3),dilation_rate=(2,2),
+                      padding='same',kernel_initializer='he_normal',name=b+'b')(X)
+    X = tf.keras.layers.BatchNormalization(name=b+'batch_norm_b')(X)
+    # X = tf.keras.layers.LeakyReLU(alpha=0.2,name=b+'leakyrelu_b')(X)
+    X = tf.keras.layers.Activation("relu")(X)
+    # block_c
+    X = tf.keras.layers.Conv2D(filters=f3,kernel_size=(1,1),dilation_rate=(1,1),
+                      padding='same',kernel_initializer='he_normal',name=b+'c')(X)
+    X = tf.keras.layers.BatchNormalization(name=b+'batch_norm_c')(X)
+    # skip_conv
+    X_skip = tf.keras.layers.Conv2D(filters=f3,kernel_size=(3,3),padding='same',name=b+'skip_conv')(X_skip)
+    X_skip = tf.keras.layers.BatchNormalization(name=b+'batch_norm_skip_conv')(X_skip)
+    # block_c + skip_conv
+    X = tf.keras.layers.Add(name=b+'add')([X,X_skip])
+    # X = tf.keras.layers.ReLU(name=b+'relu')(X)
+    X = tf.keras.layers.Activation("relu")(X)
+    return X
 
-    def conv_block(self, X, filters, block):
+def base_feature_maps_pspnet(input_layer):
+    # base covolution module to get input image feature maps
 
-        b = 'block_'+str(block)+'_'
-        f1,f2,f3 = filters
-        X_skip = X
-        # block_a
-        X = tf.keras.layers.Conv2D(filters=f1,kernel_size=(1,1),dilation_rate=(1,1),
-                        padding='same',kernel_initializer='he_normal',name=b+'a')(X)
-        X = tf.keras.layers.BatchNormalization(name=b+'batch_norm_a')(X)
-        # X = tf.keras.layers.LeakyReLU(alpha=0.2,name=b+'leakyrelu_a')(X)
-        X = tf.keras.layers.Activation("relu")(X)
-        # block_b
-        X = tf.keras.layers.Conv2D(filters=f2,kernel_size=(3,3),dilation_rate=(2,2),
-                        padding='same',kernel_initializer='he_normal',name=b+'b')(X)
-        X = tf.keras.layers.BatchNormalization(name=b+'batch_norm_b')(X)
-        # X = tf.keras.layers.LeakyReLU(alpha=0.2,name=b+'leakyrelu_b')(X)
-        X = tf.keras.layers.Activation("relu")(X)
-        # block_c
-        X = tf.keras.layers.Conv2D(filters=f3,kernel_size=(1,1),dilation_rate=(1,1),
-                        padding='same',kernel_initializer='he_normal',name=b+'c')(X)
-        X = tf.keras.layers.BatchNormalization(name=b+'batch_norm_c')(X)
-        # skip_conv
-        X_skip = tf.keras.layers.Conv2D(filters=f3,kernel_size=(3,3),padding='same',name=b+'skip_conv')(X_skip)
-        X_skip = tf.keras.layers.BatchNormalization(name=b+'batch_norm_skip_conv')(X_skip)
-        # block_c + skip_conv
-        X = tf.keras.layers.Add(name=b+'add')([X,X_skip])
-        # X = tf.keras.layers.ReLU(name=b+'relu')(X)
-        X = tf.keras.layers.Activation("relu")(X)
-        return X
+    # block_1
+    base = conv_block_pspnet(input_layer,[32,32,64],'1')
+    # block_2
+    base = conv_block_pspnet(base,[64,64,128],'2')
+    # block_3
+    base = conv_block_pspnet(base,[128,128,256],'3')
+    return base
 
-    def base_feature_maps(self, input_layer):
+def pyramid_feature_maps_pspnet(input_layer):
+    # pyramid pooling module
 
-        # block_1
-        base = self.conv_block(input_layer,[32,32,64],'1')
-        # block_2
-        base = self.conv_block(base,[64,64,128],'2')
-        # block_3
-        base = self.conv_block(base,[128,128,256],'3')
-        return base
+    base = base_feature_maps_pspnet(input_layer) # base shape: (None, 256, 256, 256)
+    # print(f'base shape:{base.shape}')
+    # red
+    red = tf.keras.layers.GlobalAveragePooling2D(name='red_pool')(base) # red shape: (None, 256)
+    # print(f'red shape:{red.shape}')
+    red = tf.keras.layers.Reshape((1,1,256))(red)
+    red = tf.keras.layers.Conv2D(filters=64,kernel_size=(1,1),name='red_1_by_1')(red)
+    red = tf.keras.layers.UpSampling2D(size=WIDTH,interpolation='bilinear',name='red_upsampling')(red)
+    # yellow
+    yellow = tf.keras.layers.AveragePooling2D(pool_size=(2,2),name='yellow_pool')(base)
+    yellow = tf.keras.layers.Conv2D(filters=64,kernel_size=(1,1),name='yellow_1_by_1')(yellow)
+    yellow = tf.keras.layers.UpSampling2D(size=2,interpolation='bilinear',name='yellow_upsampling')(yellow)
+    # blue
+    blue = tf.keras.layers.AveragePooling2D(pool_size=(4,4),name='blue_pool')(base)
+    blue = tf.keras.layers.Conv2D(filters=64,kernel_size=(1,1),name='blue_1_by_1')(blue)
+    blue = tf.keras.layers.UpSampling2D(size=4,interpolation='bilinear',name='blue_upsampling')(blue)
+    # green
+    green = tf.keras.layers.AveragePooling2D(pool_size=(8,8),name='green_pool')(base)
+    green = tf.keras.layers.Conv2D(filters=64,kernel_size=(1,1),name='green_1_by_1')(green)
+    green = tf.keras.layers.UpSampling2D(size=8,interpolation='bilinear',name='green_upsampling')(green)
+    # base + red + yellow + blue + green
+    return tf.keras.layers.concatenate([base,red,yellow,blue,green])
 
-    def pyramid_feature_maps(self, input_layer):
+def pspnet(input_shape,num_classes,pretrained_weights = None):
 
-        base = self.base_feature_maps(input_layer) # base shape: (None, 256, 256, 256)
-        # print(f'base shape:{base.shape}')
-        # red
-        red = tf.keras.layers.GlobalAveragePooling2D(name='red_pool')(base) # red shape: (None, 256)
-        # print(f'red shape:{red.shape}')
-        red = tf.keras.layers.Reshape((1,1,256))(red)
-        red = tf.keras.layers.Conv2D(filters=64,kernel_size=(1,1),name='red_1_by_1')(red)
-        red = tf.keras.layers.UpSampling2D(size=WIDTH,interpolation='bilinear',name='red_upsampling')(red)
-        # yellow
-        yellow = tf.keras.layers.AveragePooling2D(pool_size=(2,2),name='yellow_pool')(base)
-        yellow = tf.keras.layers.Conv2D(filters=64,kernel_size=(1,1),name='yellow_1_by_1')(yellow)
-        yellow = tf.keras.layers.UpSampling2D(size=2,interpolation='bilinear',name='yellow_upsampling')(yellow)
-        # blue
-        blue = tf.keras.layers.AveragePooling2D(pool_size=(4,4),name='blue_pool')(base)
-        blue = tf.keras.layers.Conv2D(filters=64,kernel_size=(1,1),name='blue_1_by_1')(blue)
-        blue = tf.keras.layers.UpSampling2D(size=4,interpolation='bilinear',name='blue_upsampling')(blue)
-        # green
-        green = tf.keras.layers.AveragePooling2D(pool_size=(8,8),name='green_pool')(base)
-        green = tf.keras.layers.Conv2D(filters=64,kernel_size=(1,1),name='green_1_by_1')(green)
-        green = tf.keras.layers.UpSampling2D(size=8,interpolation='bilinear',name='green_upsampling')(green)
-        # base + red + yellow + blue + green
-        return tf.keras.layers.concatenate([base,red,yellow,blue,green])
+    # Input
+    input_layer = tf.keras.Input(shape=input_shape,name='start_input')
 
+    X = pyramid_feature_maps_pspnet(input_layer)
+    X = tf.keras.layers.Conv2D(filters=128,kernel_size=3,padding='same',name='last_conv_3_by_3')(X)
+    X = tf.keras.layers.BatchNormalization(name='last_conv_3_by_3_batch_norm')(X)
+    # X = tf.keras.layers.Activation('sigmoid',name='last_conv_relu')(X)
+    # output = tf.keras.layers.Flatten(name='last_conv_flatten')(X)
 
-    def build_pspnet(self):
-        # Build the PSPNet model
-        X = self.pyramid_feature_maps(self.input_layer)
-        X = layers.Conv2D(filters=128, kernel_size=3, padding='same', name='last_conv_3_by_3')(X)
-        X = layers.BatchNormalization(name='last_conv_3_by_3_batch_norm')(X)
-        output = layers.Conv2D(self.num_classes, (1, 1), activation='softmax', name='softmax_layer')(X)
+    # Output layer: Note the num_classes and 'softmax' activation
+    output = tf.keras.layers.Conv2D(num_classes, (1, 1), activation='softmax',name='softmax_layer')(X)
 
-        self.model = Model(inputs=self.input_layer, outputs=output)
+    model = Model(inputs=input_layer, outputs=output)
 
+    if(pretrained_weights):
+        model.load_weights(pretrained_weights)
+
+    return model
 
 
 ############## UNET ##############
 
-class UNet(Model):
-    def __init__(self, input_shape, num_classes, weights_path=None):
-        super(UNet, self).__init__()
 
-        self.input_shape = input_shape
-        self.num_classes = num_classes
-        self.weights_path = weights_path
-
-        # Define the model architecture
-        self.build_unet()
-
-    def create_conv(self, input, filters, kernel_size=(3, 3), padding="same", activation="relu"):
-
-        conv = layers.Conv2D(filters, kernel_size, padding=padding, kernel_initializer="he_normal")(input)
-        conv = layers.BatchNormalization()(conv)
-        conv = layers.Activation(activation)(conv)
-        conv = layers.Dropout(0.2)(conv)  # Dropout layer
-        conv = layers.Conv2D(filters, kernel_size, padding=padding, kernel_initializer="he_normal")(conv)
-        conv = layers.BatchNormalization()(conv)
-        conv = layers.Activation(activation)(conv)
-        conv = layers.Dropout(0.2)(conv)  # Dropout layer
-        return conv
-
-    def create_conv_pool(self, input, filters, kernel_size=(3, 3), padding="same", activation="relu"):
-
-
-        conv = self.create_conv(input, filters, kernel_size, padding, activation)
-        pool = layers.MaxPooling2D(pool_size=(2, 2))(conv)
-        return conv, pool
-    
-    def build_unet(self):
+def build_unet(input_shape, num_classes, weights_path=None):
 
     # Input layer
-        inputs = layers.Input(self.input_shape)
+    inputs = layers.Input(input_shape)
 
-        # Downsampling
-        conv1, pool1 = self.create_conv_pool(inputs, 64)
-        conv2, pool2 = self.create_conv_pool(pool1, 128)
-        conv3, pool3 = self.create_conv_pool(pool2, 256)
-        conv4, pool4 = self.create_conv_pool(pool3, 512)
+    # Downsampling
+    conv1, pool1 = create_conv_pool_unet(inputs, 64)
+    conv2, pool2 = create_conv_pool_unet(pool1, 128)
+    conv3, pool3 = create_conv_pool_unet(pool2, 256)
+    conv4, pool4 = create_conv_pool_unet(pool3, 512)
 
-        conv_middle = self.create_conv(pool4, 1024)
+    # Middle
+    conv_middle = create_conv_unet(pool4, 1024)
 
-        # Upsampling
-        up7 = layers.UpSampling2D(size=(2, 2))(conv_middle)
-        up7 = layers.concatenate([up7, conv4])
-        conv7 = self.create_conv(up7, 512)
+    # Upsampling
+    up7 = layers.UpSampling2D(size=(2, 2))(conv_middle)
+    up7 = layers.concatenate([up7, conv4])
+    conv7 = create_conv_unet(up7, 512)
 
-        up8 = layers.UpSampling2D(size=(2, 2))(conv7)
-        up8 = layers.concatenate([up8, conv3])
-        conv8 = self.create_conv(up8, 256)
+    up8 = layers.UpSampling2D(size=(2, 2))(conv7)
+    up8 = layers.concatenate([up8, conv3])
+    conv8 = create_conv_unet(up8, 256)
 
-        up9 = layers.UpSampling2D(size=(2, 2))(conv8)
-        up9 = layers.concatenate([up9, conv2])
-        conv9 = self.create_conv(up9, 128)
+    up9 = layers.UpSampling2D(size=(2, 2))(conv8)
+    up9 = layers.concatenate([up9, conv2])
+    conv9 = create_conv_unet(up9, 128)
 
-        up10 = layers.UpSampling2D(size=(2, 2))(conv9)
-        up10 = layers.concatenate([up10, conv1])
-        conv10 = self.create_conv(up10, 64)
+    up10 = layers.UpSampling2D(size=(2, 2))(conv9)
+    up10 = layers.concatenate([up10, conv1])
+    conv10 = create_conv_unet(up10, 64)
 
-        outputs = layers.Conv2D(self.num_classes, (1, 1), activation='softmax')(conv10)
+    # Output layer: Note the num_classes and 'softmax' activation
+    outputs = layers.Conv2D(num_classes, (1, 1), activation='softmax')(conv10)
 
-        model = Model(inputs=inputs, outputs=outputs)
-        if self.weights_path is not None:
-            model.load_weights(self.weights_path)
+    model = Model(inputs=inputs, outputs=outputs)
+    if weights_path is not None:
+        model.load_weights(weights_path)
 
-        return model
+    return model
 
+# Helper functions to create the convolution and pooling layers
+def create_conv_unet(input, filters, kernel_size=(3,3), padding="same", activation="relu"):
+    conv = layers.Conv2D(filters, kernel_size, padding=padding, kernel_initializer="he_normal")(input)
+    conv = layers.BatchNormalization()(conv)
+    conv = layers.Activation(activation)(conv)
+    conv = layers.Dropout(0.2)(conv)  # Dropout layer
+    conv = layers.Conv2D(filters, kernel_size, padding=padding, kernel_initializer="he_normal")(conv)
+    conv = layers.BatchNormalization()(conv)
+    conv = layers.Activation(activation)(conv)
+    conv = layers.Dropout(0.2)(conv)  # Dropout layer
+    return conv
 
+def create_conv_pool_unet(input, filters, kernel_size=(3,3), padding="same", activation="relu"):
+    conv = create_conv_unet(input, filters, kernel_size, padding, activation)
+    pool = layers.MaxPooling2D(pool_size=(2, 2))(conv)
+    return conv, pool
 
 
 
@@ -553,9 +547,9 @@ def bilinear(shape, dtype=None):
     return weights
 
 
-def FCN(n_classes = NUM_CLASSES, shape  = INPUT_SHAPE):
+def FCN(n_classes = NUM_CLASSES, shape  = (WIDTH, HEIGHT, int(CHANNEL/2))):
 
-    Lin = layers.Input(shape=INPUT_SHAPE)
+    Lin = layers.Input(shape=shape)
         
     Lx = layers.Conv2D(64, (3, 3), activation='relu', padding='same', name='block1_convL1' )(Lin)
     Lx = layers.Conv2D(64, (3, 3), activation='relu', padding='same', name='block1_convL2' )(Lx)
@@ -596,7 +590,7 @@ def FCN(n_classes = NUM_CLASSES, shape  = INPUT_SHAPE):
 
     Lx = layers.Conv2D( n_classes ,  ( 1 , 1 ) ,activation = 'relu' )(Lx)
     Lx = layers.Conv2DTranspose( n_classes , kernel_size=(4,4) ,  strides=(2,2) , use_bias=False, kernel_initializer=bilinear )(Lx)
-    Lx = layers.convolutional.Cropping2D(((1, 1), (1, 1)))(Lx)
+    Lx = Cropping2D(((1, 1), (1, 1)))(Lx)
 
     Lx2 = f4
     Lx2 = layers.Conv2D( n_classes ,  ( 1 , 1 ) ,activation = 'relu')(Lx2)
@@ -604,10 +598,10 @@ def FCN(n_classes = NUM_CLASSES, shape  = INPUT_SHAPE):
     Lx = layers.Add()([ Lx , Lx2 ])
 
     Lx = layers.Conv2DTranspose( n_classes , kernel_size=(32,32) ,  strides=(16,16) , use_bias=False )(Lx)
-    Lx = layers.convolutional.Cropping2D(((8, 8), (8, 8)))(Lx)
+    Lx = Cropping2D(((8, 8), (8, 8)))(Lx)
 
      
-    Rin = layers.Input(shape=INPUT_SHAPE)
+    Rin = layers.Input(shape=shape)
         
     Rx = layers.Conv2D(64, (3, 3), activation='relu', padding='same', name='block1_convR1' )(Rin)
     Rx = layers.Conv2D(64, (3, 3), activation='relu', padding='same', name='block1_convR2' )(Rx)
@@ -648,7 +642,7 @@ def FCN(n_classes = NUM_CLASSES, shape  = INPUT_SHAPE):
 
     Rx = layers.Conv2D( n_classes ,  ( 1 , 1 ) ,activation = 'relu' )(Rx)
     Rx = layers.Conv2DTranspose( n_classes , kernel_size=(4,4) ,  strides=(2,2) , use_bias=False, kernel_initializer=bilinear )(Rx)
-    Rx = layers.convolutional.Cropping2D(((1, 1), (1, 1)))(Rx)
+    Rx = Cropping2D(((1, 1), (1, 1)))(Rx)
 
     Rx2 = g4
     Rx2 = layers.Conv2D( n_classes ,  ( 1 , 1 ) ,activation = 'relu')(Rx2)
@@ -656,7 +650,7 @@ def FCN(n_classes = NUM_CLASSES, shape  = INPUT_SHAPE):
     Rx = layers.Add()([ Rx , Rx2 ])
 
     Rx = layers.Conv2DTranspose( n_classes , kernel_size=(32,32) ,  strides=(16,16) , use_bias=False )(Rx)
-    Rx = layers.convolutional.Cropping2D(((8, 8), (8, 8)))(Rx)
+    Rx = Cropping2D(((8, 8), (8, 8)))(Rx)
     
     o = layers.Add()([ Lx , Rx ])
     o = layers.Softmax(axis=3)(o)

@@ -19,8 +19,14 @@ import tifffile
 # python scripts
 from config import * #PSPNet, AttentionUNet, FCN
 
+def split_channels(image, label):
+    num = int(CHANNEL/2)
+    first_4_channels = image[:, :, :, :num]
+    last_4_channels = image[:, :, :, num:]
+    return (first_4_channels, last_4_channels), label
 
-def training_process(train_ds, eval_ds, ori_eval_ds, epochs, batch_size, prev_epoch=None,prev_batch_size=None):
+
+def training_process(model_chosen, model, train_ds, eval_ds, ori_eval_ds, epochs, batch_size, prev_epoch=None,prev_batch_size=None):
 
 
     if prev_epoch is not None and prev_batch_size is not None:
@@ -47,7 +53,7 @@ def training_process(train_ds, eval_ds, ori_eval_ds, epochs, batch_size, prev_ep
         save_best_only=True,
         verbose=1
     )
-    plot_predictions_cb = PlotPredictions(ori_eval_ds, save_path=output_subdir_name)
+    plot_predictions_cb = PlotPredictions(model, ori_eval_ds, save_path=output_subdir_name)
     tensorboard_callback = TensorBoard(log_dir=log_dir_name, histogram_freq=1, update_freq=2)
 
     early_stopping_callback = EarlyStopping(
@@ -58,15 +64,29 @@ def training_process(train_ds, eval_ds, ori_eval_ds, epochs, batch_size, prev_ep
         restore_best_weights=True
     )
 
+    if model_chosen == 'fcn':
+        train_ds = train_ds.map(split_channels)
+        eval_ds = eval_ds.map(split_channels)
+        
+        history = model.fit(
+            train_ds,
+            validation_data=eval_ds,
+            epochs=epochs,
+            callbacks=[early_stopping_callback, model_checkpoint_callback],
+        )
 
-    history = model.fit(
-        train_ds,
-        validation_data=eval_ds,
-        epochs=epochs,
-        callbacks=[early_stopping_callback, model_checkpoint_callback, plot_predictions_cb, tensorboard_callback],
-                # classification_rep_callback],
-        #initial_epoch=epochs - 10  # Start from the last epoch
-    )
+    else:
+        history = model.fit(
+            train_ds,
+            validation_data=eval_ds,
+            epochs=epochs,
+            callbacks=[early_stopping_callback, model_checkpoint_callback, plot_predictions_cb, tensorboard_callback],
+                    # classification_rep_callback],
+            #initial_epoch=epochs - 10  # Start from the last epoch
+        )
+
+
+
 
     # Plot and save the history
     filename = f"{plot_dir_name}/plots_epoch_{epochs}_bs_{batch_size}.png"
@@ -80,19 +100,20 @@ def training_process(train_ds, eval_ds, ori_eval_ds, epochs, batch_size, prev_ep
 if __name__ == "__main__":
 
     # inputs to change
-    ds_dir = os.getcwd()
-    curr_dir = os.path.join(ds_dir, 'results')
-    model_chosen = 'pspnet' # or unet, fcn
+    ds_dir = r'D:\python_workspace\NUS_ISS\PR_Project\Dataset\DFC_Public_Dataset'
+    curr_dir = os.path.join(os.getcwd(), 'results_test')
+    model_chosen = 'fcn' # pspnet, unet, fcn
     pretrained = False
 
     # prepare dataloaders
     X_train, X_test, y_train, y_test = train_eval_dataset_gen(ds_dir)
     augmented_train_ds, eval_ds, ori_eval_ds = dataloader_gen(X_train, y_train, X_test, y_test, BATCH_SIZE)
+    custom_loss = weighted_categorical_crossentropy(weights)
 
 
-    model_dir_name = f'{curr_dir}/models/pspnet_{CHANNEL}_chnls_sparse_cat_loss'
-    log_dir_name = f'{curr_dir}/logs/pspnet_{CHANNEL}_chnls_sparse_cat_loss'
-    output_dir_name = f'{curr_dir}/output/pspnet_{CHANNEL}_chnls_sparse_cat_loss'
+    model_dir_name = f'{curr_dir}/models/{model_chosen}_{CHANNEL}_chnls_test'
+    log_dir_name = f'{curr_dir}/logs/{model_chosen}_{CHANNEL}_chnls_test'
+    output_dir_name = f'{curr_dir}/output/{model_chosen}_{CHANNEL}_chnls_test'
 
     os.makedirs(model_dir_name, exist_ok=True)
     os.makedirs(log_dir_name, exist_ok=True)
@@ -101,23 +122,25 @@ if __name__ == "__main__":
     # choose models
     if not pretrained: # Build model from scratch
         if model_chosen == 'pspnet':
-            model = PSPNet(INPUT_SHAPE, NUM_CLASSES)
+            # model = PSPNet(INPUT_SHAPE, NUM_CLASSES)
+            model = pspnet(INPUT_SHAPE,NUM_CLASSES)
         elif model_chosen == 'unet':
-            model = UNet(INPUT_SHAPE, NUM_CLASSES)
+            # model = AttentionUNet(INPUT_SHAPE, NUM_CLASSES)
+            model = build_attention_unet(INPUT_SHAPE, num_classes=NUM_CLASSES)
         elif model_chosen == 'fcn':
-            model = FCN(shape=INPUT_SHAPE, n_classes=NUM_CLASSES)
+            model = FCN(shape=(WIDTH, HEIGHT, int(CHANNEL/2)), n_classes=NUM_CLASSES)
     
     else:
         if model_chosen == 'pspnet':
-            psp_model_path = f'{curr_dir}/results_2/models/pspnet_14_chnls_custom_loss/model_attention_custom_loss_bs_4_ep_100.h5'
+            psp_model_path = f'{curr_dir}/models/{model_chosen}_{CHANNEL}_chnls_test/model_bs_{BATCH_SIZE}_ep_{EPOCHS}.h5'
             model = load_model(psp_model_path, custom_objects = {'loss':custom_loss})
             
         elif model_chosen == 'unet':
-            unet_model_path = f'{curr_dir}/results_2/models/unet/model_custom_loss_bs_8_ep_100.h5'
+            unet_model_path = f'{curr_dir}/models/{model_chosen}_{CHANNEL}_chnls_test/model_bs_{BATCH_SIZE}_ep_{EPOCHS}.h5'
             model = load_model(unet_model_path, custom_objects = {'loss':custom_loss})
             
         elif model_chosen == 'fcn':
-            fcn_model_path = f'{curr_dir}/results_2/models/fcn/model_FCN16_CL.h5'    
+            fcn_model_path = f'{curr_dir}/models/{model_chosen}_{CHANNEL}_chnls_test/model_bs_{BATCH_SIZE}_ep_{EPOCHS}.h5'
             model = load_model(fcn_model_path, custom_objects = {'loss':custom_loss, 'bilinear':bilinear})
             
 
@@ -126,8 +149,7 @@ if __name__ == "__main__":
     )
     optimizer = tf.keras.optimizers.Adam(learning_rate=lr_schedule)
 
-    loss_function = weighted_categorical_crossentropy(weights)
     model.compile(tf.keras.optimizers.Adam(LEARNING_RATE), \
-                  loss=loss_function, metrics=['accuracy'])
+                  loss=custom_loss, metrics=['accuracy'])
 
-    training_process(augmented_train_ds, eval_ds, ori_eval_ds, EPOCHS, BATCH_SIZE, prev_epoch=None,prev_batch_size=None)
+    training_process(model_chosen, model, augmented_train_ds, eval_ds, ori_eval_ds, EPOCHS, BATCH_SIZE, prev_epoch=None,prev_batch_size=None)

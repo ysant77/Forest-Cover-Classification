@@ -53,8 +53,10 @@ class S2PixelCloudDetector:
         self.dilation_size = dilation_size
 
         if model_filename is None:
-            package_dir = os.path.dirname(__file__)
-            model_filename = os.path.join(package_dir, "models", MODEL_FILENAME)
+            # Get root directory of the package
+            root_dir = os.path.dirname(os.path.dirname(__file__))
+            # Get model filename, models are stored in the `models` directory
+            model_filename = os.path.join(root_dir, "models", MODEL_FILENAME)
         self.model_filename = model_filename
 
         self._classifier: PixelClassifier | None = None
