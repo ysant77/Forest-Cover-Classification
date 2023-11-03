@@ -45,6 +45,10 @@ def preprocess_image(img: np.ndarray) -> np.ndarray:
     ndvi = tf.expand_dims(ndvi, axis=-1)
     ndvi = (ndvi + 1.0) / 2.0
     ndvi = tf.clip_by_value(tf.cast(ndvi, tf.float32), 0., 1.)
+    #added to handle channels more than 13
+    if img.shape[2] >= 14:
+        img = img[:,:,:-1]
+    
     img = tf.clip_by_value(tf.cast(img, tf.float32) / MAX_VAL, 0., 1.)
 
     combined_img = tf.concat([img, ndvi], axis=-1)

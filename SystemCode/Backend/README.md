@@ -40,7 +40,7 @@ Deforestation_Detection_Backend
 ## Getting Started
 
 1. First, follow the models/model_file.txt to download the pre-trained models. After downloading, keep the model files in models directory
-2. Install the required packages.
+2. Install the required packages using the command ```pip install -r requirements.txt```.
 3. Run the server application with the following command from this directory.
 
 ```bash
