@@ -2,6 +2,12 @@
 
 PRS Practice Module, Group 21, NUS-ISS, 2023.
 
+## Dataset used for training and testing:
+
+Link for dataset: https://ieee-dataport.org/competitions/2020-ieee-grss-data-fusion-contest
+Training dataset: DFC_Public_Dataset.zip
+Testing dataset: s2_validation.zip, dfc_validation.zip
+
 ## Project Structure
 
 1. Dataset: Contains sample dataset images of four regions: Brazil, Indonesia, Singpore, and US. In each of the images before refers to the first image and after refers to the second image
