@@ -1,4 +1,4 @@
-import { redirect } from '@sveltejs/kit';
+import { fail, redirect } from '@sveltejs/kit';
 import { setProcessedData } from '$lib/stores'; 
 
 export const actions = {
@@ -16,6 +16,7 @@ export const actions = {
             body: uploadData
         });
         const data = await response.json();
+        console.log(data);
 
         // Store data in store
         await setProcessedData(data);
@@ -23,8 +24,11 @@ export const actions = {
         // Redirect to analysis page
         if(response.status === 200) {
             throw redirect(308, '/analysis')
+        } else {
+            return fail(400, {
+                description: "400 Bad Request response from the server.",
+                error: data.detail
+            });
         }
-
-        return { success: true };
     }
 }

@@ -1,4 +1,4 @@
-# 🌲 Forest Cover Classification
+# 🌲 Deforestation Detection
 
 NUS-ISS, PRS Practice Module, WebUI & Client
 
@@ -43,13 +43,7 @@ Deforestation_Detection_Frontend
 
 ## Developing
 
-1. Download Node JS from here: https://nodejs.org/en/download
-   
-2. Check installation using command ```npm -v```. (Note: In windows, do not make use of anaconda command prompt here). 
-
-4. Install dependencies with `npm install` (or `pnpm install` or `yarn` or `bun install`), 
-
-5. Run either of the following commands to start a development server:
+Once you've created a project and installed dependencies with `npm install` (or `pnpm install` or `yarn` or `bun install`), start a development server:
 
 ```bash
 # Using npm

@@ -71,6 +71,9 @@ def loading_tiff_and_resize(img_bytes: bytes, desired_shape: tuple):
     # Check image shape
     img_shape = img.shape
 
+    if len(img_shape) != 3:
+        raise HTTPException(status_code=400, detail="Incorrect number of dimensions in the image.")
+
     if img_shape[2] != desired_shape[2]:
         raise HTTPException(status_code=400, detail="Incorrect number of bands in the image.")
 
