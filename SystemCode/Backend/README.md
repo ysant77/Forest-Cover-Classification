@@ -40,8 +40,12 @@ Deforestation_Detection_Backend
 ## Getting Started
 
 1. First, follow the models/model_file.txt to download the pre-trained models. After downloading, keep the model files in models directory
-2. Install the required packages using the command ```pip install -r requirements.txt```.
+2. Install the required packages using the command ```pip install -r requirements.txt```. 
 3. Run the server application with the following command from this directory.
+
+## Note:
+1. This system has been implemented and tested using python 3.8, and hence recommended version of python is 3.8
+2. If any issues are encountered while installing requirements, run the command ```pip install -r req_win.txt```
 
 ```bash
 uvicorn main:app --reload --host 0.0.0.0

@@ -25,7 +25,7 @@ model = load_model(
     custom_objects={'loss': custom_loss}
 )
 cloud_detector = S2PixelCloudDetector(
-    threshold=0.99, average_over=4, dilation_size=2, all_bands=True
+    threshold=0.996, average_over=4, dilation_size=2, all_bands=True
 )
 
 

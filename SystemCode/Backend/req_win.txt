@@ -1,0 +1,14 @@
+rasterio
+Pillow
+scikit-image
+tensorflow<2.11
+s2cloudless
+tifffile
+uvicorn
+fastapi
+opencv-python
+pandas
+numpy
+matplotlib
+lightgbm
+python-multipart
